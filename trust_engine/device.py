@@ -33,19 +33,23 @@ class Device:
         """Validate fields and normalize status to DeviceState."""
         if not isinstance(self.device_id, str) or not self.device_id.strip():
             raise ValueError("device_id must be a non-empty string.")
+        self.device_id = self.device_id.strip()
 
         if not isinstance(self.mac_address, str) or not self.mac_address.strip():
             raise ValueError("mac_address must be a non-empty string.")
+        self.mac_address = self.mac_address.strip()
 
         if isinstance(self.physical_port, str):
             if not self.physical_port.strip():
                 raise ValueError("physical_port as string must not be empty.")
+            self.physical_port = self.physical_port.strip()
         elif not isinstance(self.physical_port, int):
             raise ValueError("physical_port must be an integer or non-empty string.")
 
         if self.ip_address is not None:
             if not isinstance(self.ip_address, str) or not self.ip_address.strip():
                 raise ValueError("ip_address must be None or a non-empty string.")
+            self.ip_address = self.ip_address.strip()
 
         if isinstance(self.status, str):
             self.status = DeviceState.from_string(self.status)
@@ -53,6 +57,7 @@ class Device:
             raise ValueError(
                 f"status must be a DeviceState instance or valid state string, got {type(self.status).__name__}."
             )
+
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the device record to a dictionary representation."""

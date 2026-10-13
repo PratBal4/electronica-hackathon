@@ -12,6 +12,8 @@ This document tracks the staged implementation, architectural decisions, and ver
 | **Stage 2** | Telemetry schemas & physical/network validation | **COMPLETED** | 35 / 35 | 2026-10-13 |
 | **Stage 3** | Deterministic policy evaluation & engine | **COMPLETED** | 56 / 56 | 2026-10-13 |
 | **Stage 4** | Audit logging & simulated enforcement adapter | **COMPLETED** | 70 / 70 | 2026-10-13 |
+| **Stage 5** | Formal security audit & boundary invariant review | **COMPLETED** | 75 / 75 | 2026-10-13 |
+
 
 
 
@@ -384,6 +386,33 @@ A key question during embedded software development is: *Why do software tests p
 - [x] **`python -m pytest -q` passes.** (All 70 tests pass in 0.04s).
 - [x] **README distinguishes simulated from real enforcement.** (Safety guarantee banner added).
 - [x] **Demo does not risk the Pi's network connection or physical hardware.** (Proven via test mock verification).
+
+---
+
+## Stage 5: Formal Security Audit & Boundary Invariant Review
+
+### 1. Security Review Scope
+In accordance with Section 11 of the Walkthrough specification (*Useful security-review prompt*), a comprehensive, forensic review of trust-state authority, duplicate IDs, invalid/stale telemetry, unsafe defaults, state transitions, shared mutable state, and boundary mutations was conducted across the codebase.
+
+### 2. Ranked Findings & Applied Remediations
+
+| Severity | ID | Finding & Description | Remediation Applied |
+|:---:|:---:|---|---|
+| **HIGH** | **SEC-01** | `TrustEngine.evaluate_monitoring()` did not check the device's initial lifecycle state, allowing unadmitted devices in `QUARANTINED` to be evaluated for monitoring and potentially transitioned to `TRUSTED` without passing admission rules. | Added state gate raising `ValueError` if `device.status not in (TRUSTED, ANOMALOUS)`. |
+| **MEDIUM** | **SEC-02** | `TrustEngine.evaluate_admission()` allowed already `TRUSTED`, `ISOLATED`, or `REJECTED` devices to undergo admission evaluation instead of enforcing prior re-quarantine/re-docking. | Added state gate raising `ValueError` if `device.status not in (QUARANTINED, UNKNOWN)`. |
+| **MEDIUM** | **SEC-03** | `DeviceRegistry.register()` checked and overridden device-supplied `TRUSTED` status, but allowed caller-supplied `ANOMALOUS` or `ISOLATED` states to be registered without prior quarantine. | Registry now enforces that *all* newly registered devices begin strictly in `QUARANTINED`, overriding any caller-supplied state. |
+| **LOW** | **SEC-04** | `Device` identifier fields (`device_id`, `mac_address`, `physical_port`) validated non-empty whitespace but did not strip whitespace, permitting subtle alias collisions (e.g. `"dev-01 "` vs `"dev-01"`). | `Device.__post_init__` now strips leading/trailing whitespace across all identifier and address fields. |
+| **LOW** | **SEC-05** | Negative POSIX timestamps (`ts < 0`) were not explicitly rejected in `TelemetryValidator`. | `validate_physical` and `validate_network` now reject `ts < 0` as invalid POSIX timestamps. |
+
+### 3. Dedicated Security Test Suite (`tests/test_security_review.py` — 5 tests)
+1. **`test_sec01_evaluate_monitoring_rejects_unadmitted_devices`**: Verifies that calling `evaluate_monitoring` on devices in `QUARANTINED` or `REJECTED` raises `ValueError`.
+2. **`test_sec02_evaluate_admission_rejects_non_quarantined_devices`**: Verifies that calling `evaluate_admission` on `TRUSTED` devices raises `ValueError`.
+3. **`test_sec03_registry_enforces_quarantine_for_all_untrusted_states`**: Verifies that registering devices with `status=ANOMALOUS` or `status=ISOLATED` forces `QUARANTINED`.
+4. **`test_sec04_device_identifier_whitespace_normalization`**: Verifies that identifier strings with padding are stripped and normalized.
+5. **`test_sec05_negative_timestamps_rejected`**: Verifies that negative timestamps fail telemetry validation.
+
+**Total Verified Tests Across Repository:** **75 / 75 passing**.
+
 
 
 

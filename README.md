@@ -57,7 +57,8 @@ backplane/
 │   ├── test_engine.py             # Integration tests for transitions & TrustEngine
 │   ├── test_audit.py              # Unit tests for audit logging & secret scrubbing
 │   ├── test_enforcement.py        # Safety tests proving no system/GPIO calls occur
-│   └── test_simulator.py          # Scenario verification for admission & isolation
+│   ├── test_simulator.py          # Scenario verification for admission & isolation
+│   └── test_security_review.py    # Invariant & boundary regression tests
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -91,7 +92,7 @@ pip install pytest
 ## 4. Running Tests & Demonstration CLI
 
 ### Run Test Suite
-To run all 70 automated tests:
+To run all 75 automated tests:
 
 ```bash
 .venv/bin/pytest -v
@@ -116,6 +117,8 @@ python main.py
 | **Stage 2** | Telemetry schemas and validation | **Completed** | 35 passing |
 | **Stage 3** | Policy engine & admission rules | **Completed** | 56 passing |
 | **Stage 4** | Audit logging, simulator & simulated enforcement | **Completed** | 70 passing |
+| **Stage 5** | Formal security audit & boundary invariant hardening | **Completed** | 75 passing |
+
 
 
 

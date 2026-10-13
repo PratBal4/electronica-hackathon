@@ -169,7 +169,13 @@ class TrustEngine:
             PolicyDecision with verdict and evidence summary.
         """
         device = self.registry.lookup(device_id)
+        if device.status not in (DeviceState.QUARANTINED, DeviceState.UNKNOWN):
+            raise ValueError(
+                f"Cannot evaluate admission for device '{device_id}' in state {device.status.value}; "
+                "device must be in QUARANTINED."
+            )
         ref_time = current_time if current_time is not None else time.time()
+
 
         # Filter and validate physical telemetry: invalid data must NOT become evidence
         valid_physical: List[PhysicalTelemetry] = []
@@ -252,7 +258,13 @@ class TrustEngine:
             PolicyDecision with verdict.
         """
         device = self.registry.lookup(device_id)
+        if device.status not in (DeviceState.TRUSTED, DeviceState.ANOMALOUS):
+            raise ValueError(
+                f"Cannot evaluate monitoring for device '{device_id}' in state {device.status.value}; "
+                "device must be active in TRUSTED or ANOMALOUS."
+            )
         ref_time = current_time if current_time is not None else time.time()
+
 
         # Validate incoming telemetry
         valid_physical: List[PhysicalTelemetry] = []

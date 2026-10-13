@@ -88,19 +88,22 @@ class DeviceRegistry:
             )
 
         # Enforce registry status ownership:
-        # Never trust a device-supplied status field or allow it to set itself TRUSTED.
+        # All newly registered devices must start in QUARANTINED. An untrusted payload
+        # cannot set itself to TRUSTED, ANOMALOUS, ISOLATED, or REJECTED.
         admitted_status = device.status
-        if admitted_status == DeviceState.TRUSTED:
+        if admitted_status != DeviceState.QUARANTINED:
             logger.warning(
-                "Device '%s' attempted to register with status TRUSTED. "
-                "Overriding to QUARANTINED (trust must be granted by Trust Engine).",
+                "Device '%s' attempted to register with status %s. "
+                "Enforcing initial QUARANTINED state (trust lifecycle owned by engine).",
                 device.device_id,
+                admitted_status.value,
             )
             admitted_status = DeviceState.QUARANTINED
 
         # Defensive copy to isolate internal state from external object mutations
         stored_device = dataclass_replace(device, status=admitted_status)
         self._devices[device.device_id] = stored_device
+
 
         logger.info(
             "Registered device '%s' on port %s (status: %s)",

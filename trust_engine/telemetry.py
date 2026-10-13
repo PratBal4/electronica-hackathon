@@ -249,15 +249,19 @@ class TelemetryValidator:
             errors.append(f"timestamp must be a finite number; got {telemetry.timestamp}")
         else:
             ts = float(telemetry.timestamp)
-            age = ref_time - ts
-            if age > bounds.max_age_seconds:
-                errors.append(
-                    f"Telemetry is stale: reading is {age:.1f}s old (max allowable: {bounds.max_age_seconds}s)"
-                )
-            elif age < -bounds.max_future_skew_seconds:
-                errors.append(
-                    f"Telemetry timestamp is in the future ({abs(age):.1f}s ahead of clock)"
-                )
+            if ts < 0:
+                errors.append(f"timestamp must be a non-negative POSIX timestamp, got {ts}")
+            else:
+                age = ref_time - ts
+                if age > bounds.max_age_seconds:
+                    errors.append(
+                        f"Telemetry is stale: reading is {age:.1f}s old (max allowable: {bounds.max_age_seconds}s)"
+                    )
+                elif age < -bounds.max_future_skew_seconds:
+                    errors.append(
+                        f"Telemetry timestamp is in the future ({abs(age):.1f}s ahead of clock)"
+                    )
+
 
         is_valid = len(errors) == 0
         if not is_valid:
@@ -329,15 +333,19 @@ class TelemetryValidator:
             errors.append(f"timestamp must be a finite number; got {telemetry.timestamp}")
         else:
             ts = float(telemetry.timestamp)
-            age = ref_time - ts
-            if age > bounds.max_age_seconds:
-                errors.append(
-                    f"Telemetry is stale: reading is {age:.1f}s old (max allowable: {bounds.max_age_seconds}s)"
-                )
-            elif age < -bounds.max_future_skew_seconds:
-                errors.append(
-                    f"Telemetry timestamp is in the future ({abs(age):.1f}s ahead of clock)"
-                )
+            if ts < 0:
+                errors.append(f"timestamp must be a non-negative POSIX timestamp, got {ts}")
+            else:
+                age = ref_time - ts
+                if age > bounds.max_age_seconds:
+                    errors.append(
+                        f"Telemetry is stale: reading is {age:.1f}s old (max allowable: {bounds.max_age_seconds}s)"
+                    )
+                elif age < -bounds.max_future_skew_seconds:
+                    errors.append(
+                        f"Telemetry timestamp is in the future ({abs(age):.1f}s ahead of clock)"
+                    )
+
 
         # 8. Optional fields validation
         if telemetry.device_id is not None:
