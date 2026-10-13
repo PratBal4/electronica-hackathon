@@ -9,9 +9,10 @@ This document tracks the staged implementation, architectural decisions, and ver
 | Stage | Focus Area | Status | Passing Tests | Date Verified |
 |---|---|---|---|---|
 | **Stage 1** | State model, Device dataclass, In-memory Registry | **COMPLETED** | 18 / 18 | 2026-10-13 |
-| **Stage 2** | Telemetry schemas & physical/network validation | *Queued* | - | - |
+| **Stage 2** | Telemetry schemas & physical/network validation | **COMPLETED** | 35 / 35 | 2026-10-13 |
 | **Stage 3** | Deterministic policy evaluation & engine | *Queued* | - | - |
 | **Stage 4** | Audit logging & simulated enforcement adapter | *Queued* | - | - |
+
 
 ---
 
@@ -172,5 +173,91 @@ tests/test_states.py::test_valid_states_set PASSED                       [100%]
 
 ---
 
+## Stage 2: Telemetry Schemas and Validation
+
+### 1. Architectural Objectives
+- **Separate Physical and Network Schemas:** Maintain clean separation between physical power/sensor data (`PhysicalTelemetry`) and network traffic observations (`NetworkTelemetry`).
+- **Explicit Units & Types:** Units are explicitly encoded in field names (`voltage_v`, `current_a`, `temperature_c`, `window_duration_s`) to eliminate ambiguity.
+- **Strict Decoupling:** Validation validates schema conformity, type correctness, finite bounds, and freshness. It is strictly decoupled from policy decisions (valid telemetry constitutes evidence, but never dictates policy admission on its own).
+- **Honest Security Scope:** Normal power consumption or network traffic is observable evidence, never cryptographic proof of identity.
+- **Finite Number Guarantees:** Strict rejection of `NaN`, `+Infinity`, and `-Infinity` across all numeric measurements.
+- **Freshness Thresholds:** Readings older than `max_age_seconds` (stale data) or significantly ahead of clock (future skew) are rejected.
+
+### 2. Implemented Modules
+- `trust_engine/telemetry.py`:
+  - `PhysicalTelemetry`: Dataclass capturing `device_id`, `physical_port`, `voltage_v`, `current_a`, `timestamp`, and optional `temperature_c`.
+  - `NetworkTelemetry`: Dataclass capturing `source_mac`, `source_ip`, `destination`, `protocol`, `packet_count`, `byte_count`, `timestamp`, and optional `device_id`, `physical_port`, `source_port`, `destination_port`, `window_duration_s`.
+  - `PhysicalBoundsConfig` & `NetworkBoundsConfig`: Configurable boundary definitions for sensor validation.
+  - `ValidationResult`: Structured result object containing `is_valid`, `errors`, `warnings`, and helper `raise_if_invalid()`.
+  - `TelemetryValidator`: Deterministic validator class and helper functions `validate_physical_telemetry` and `validate_network_telemetry`.
+
+---
+
+### 3. Detailed Audit of Conducted Tests (17 Telemetry Tests, 35 Total)
+
+All 17 new telemetry tests are automated via `tests/test_telemetry.py`.
+
+#### A. Valid Telemetry Records
+1. **`test_valid_physical_telemetry_accepted`**
+   - Asserts a compliant physical record (5.05V, 0.45A, current timestamp, 36.5°C) passes validation without errors.
+2. **`test_valid_physical_telemetry_without_optional_temperature`**
+   - Asserts physical telemetry with `temperature_c=None` passes validation.
+3. **`test_valid_network_telemetry_accepted`**
+   - Asserts compliant network telemetry (TCP, packet/byte counts, transport ports, window duration) passes validation.
+
+#### B. Type & Missing Field Validation
+4. **`test_physical_telemetry_wrong_type_rejected`**
+   - Asserts non-`PhysicalTelemetry` objects (e.g. dicts) fail validation immediately.
+5. **`test_physical_telemetry_missing_or_invalid_fields`**
+   - Asserts empty `device_id`, boolean port (`True`), string voltage (`"5.0"`), and boolean voltage (`False`) fail validation.
+6. **`test_network_telemetry_wrong_types_rejected`**
+   - Asserts empty MAC address and boolean packet counts fail validation.
+
+#### C. Out-of-Range and Configurable Bounds
+7. **`test_physical_telemetry_out_of_bounds`**
+   - Asserts excessive voltage (28V on 24V limit), negative voltage (-1V), excessive current (10A on 5A limit), and out-of-range temperature (150°C) fail validation.
+8. **`test_physical_telemetry_custom_configurable_bounds`**
+   - Asserts custom tight USB 5V rail bounds (`4.75V - 5.25V`) successfully reject 4.60V.
+9. **`test_network_telemetry_out_of_bounds`**
+   - Asserts negative packet count (-5) and out-of-range transport ports (70000) fail validation.
+
+#### D. Finite Number Checks (Rejection of NaN & Infinity)
+10. **`test_physical_telemetry_rejects_nan_and_infinity`**
+    - Asserts `NaN` voltage, `+Inf` current, `-Inf` temperature, and `NaN` timestamp fail validation.
+11. **`test_network_telemetry_rejects_nan_and_infinity`**
+    - Asserts `NaN` timestamp and `+Inf` window duration in network telemetry fail validation.
+
+#### E. Freshness & Stale Data
+12. **`test_physical_telemetry_stale_reading_rejected`**
+    - Asserts physical readings older than `max_age_seconds` (120s old vs 60s limit) are flagged as stale and rejected.
+13. **`test_physical_telemetry_future_timestamp_rejected`**
+    - Asserts timestamps significantly ahead of reference clock (30s in the future vs 5s limit) fail validation.
+14. **`test_network_telemetry_stale_reading_rejected`**
+    - Asserts stale network telemetry readings are rejected.
+
+#### F. Optional Fields & Helpers
+15. **`test_network_telemetry_optional_fields_behavior`**
+    - Asserts optional fields default to `None` when omitted, and verifies invalid optional fields (blank device_id, port 0) are caught.
+16. **`test_validation_result_raise_if_invalid`**
+    - Asserts `ValidationResult.raise_if_invalid()` raises `TelemetryValidationError` when errors exist, and is a no-op when valid.
+17. **`test_telemetry_serialization`**
+    - Asserts `to_dict()` outputs clean dictionaries for physical and network records.
+
+---
+
+### 4. Logging System Verification
+
+Every test run writes structured execution and debug logs into `logs/pytest.log`:
+```text
+2026-10-13 11:04:36 [INFO] trust_engine.registry: Registered device 'dev-001' on port 1 (status: QUARANTINED)
+2026-10-13 11:04:36 [WARNING] trust_engine.registry: Device 'rogue-001' attempted to register with status TRUSTED. Overriding to QUARANTINED.
+2026-10-13 11:04:36 [DEBUG] trust_engine.telemetry: Physical telemetry validation failed for device 'dev-1': voltage_v 28.0 V out of bounds [0.0, 24.0] V
+2026-10-13 11:04:36 [DEBUG] trust_engine.telemetry: Physical telemetry validation failed for device 'dev-1': voltage_v must be a finite number; got nan
+2026-10-13 11:04:36 [DEBUG] trust_engine.telemetry: Physical telemetry validation failed for device 'dev-1': Telemetry is stale: reading is 120.0s old (max allowable: 60.0s)
+```
+
+---
+
 ### 5. Next Stage
-- **Stage 2 (Prompt 2):** Telemetry Schemas and Validation (`trust_engine/telemetry.py` and `tests/test_telemetry.py`).
+- **Stage 3 (Prompt 3):** Deterministic Policy Evaluation and Trust Engine Orchestration (`trust_engine/policy.py`, `trust_engine/engine.py`, and `tests/test_policy.py`, `tests/test_engine.py`).
+

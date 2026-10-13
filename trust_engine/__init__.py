@@ -13,6 +13,17 @@ from trust_engine.registry import (
     RegistryError,
 )
 from trust_engine.states import DeviceState
+from trust_engine.telemetry import (
+    NetworkBoundsConfig,
+    NetworkTelemetry,
+    PhysicalBoundsConfig,
+    PhysicalTelemetry,
+    TelemetryValidationError,
+    TelemetryValidator,
+    ValidationResult,
+    validate_network_telemetry,
+    validate_physical_telemetry,
+)
 
 __all__ = [
     "Device",
@@ -21,5 +32,14 @@ __all__ = [
     "DeviceRegistry",
     "DeviceState",
     "DuplicateDeviceError",
+    "NetworkBoundsConfig",
+    "NetworkTelemetry",
+    "PhysicalBoundsConfig",
+    "PhysicalTelemetry",
     "RegistryError",
+    "TelemetryValidationError",
+    "TelemetryValidator",
+    "ValidationResult",
+    "validate_network_telemetry",
+    "validate_physical_telemetry",
 ]
