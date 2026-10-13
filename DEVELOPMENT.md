@@ -413,6 +413,94 @@ In accordance with Section 11 of the Walkthrough specification (*Useful security
 
 **Total Verified Tests Across Repository:** **75 / 75 passing**.
 
+---
+
+## Stage 6: ESP32 Hardware Telemetry Transport, Frame Parser & Ingestion Pipeline
+
+### 1. Architectural Scope & Problem Statement
+The Smart Backplane physical dock monitors up to 3 dock ports using an INA3221 3-channel power monitor connected to an ESP32 microcontroller. The ESP32 streams raw telemetry lines over a UART/Serial link (`/dev/ttyS0` or `/dev/serial0`) to the Raspberry Pi 3B+.
+
+Physical microcontroller-to-Pi serial communication presents distinct transport vulnerabilities and failure modes:
+1. **Partial Reads & Chunk Fragmentation:** UART reads return arbitrary byte chunk sizes (e.g. 7 or 16 bytes), slicing JSON messages across read boundaries.
+2. **Electrical Line Noise & Bit Flips:** UART transmissions without integrity checks can silently mutate float values (e.g. `5.0V` becoming `50.0V` or corrupting JSON syntax).
+3. **Replay & Stale Sequence Frames:** Power hiccups or microcontroller resets can cause frame repetition or sequence regression.
+4. **Runaway / Missing-Delimiter Streams:** Noise or stream desynchronization causing missing `\n` delimiters can lead to unbounded buffer memory exhaustion.
+5. **Downstream Integration:** Raw frames must resolve to docked devices, undergo physical bounds verification, and feed into the Trust Engine without trusting client-asserted states.
+
+### 2. Protocol Specification (Version 1)
+Line-delimited JSON frames terminated by `\n` or `\r\n`:
+```json
+{
+  "v": 1,
+  "seq": 1042,
+  "port": 1,
+  "device_id": "dock-dev-01",
+  "voltage_v": 5.08,
+  "current_a": 0.44,
+  "temp_c": 36.2,
+  "timestamp": 1718000000.0,
+  "crc32": "aa493142"
+}
+```
+
+- **`v`**: Protocol version integer (strictly `1`).
+- **`seq`**: Strictly monotonic sequence integer per monitored port.
+- **`port`**: Physical dock port number (integer or string e.g. `1`, `2`, `3`).
+- **`voltage_v`**: INA3221 bus voltage in Volts (finite float/int, not bool).
+- **`current_a`**: INA3221 shunt current in Amperes (finite float/int, not bool).
+- **`timestamp`**: POSIX epoch timestamp in seconds (`ts >= 0`).
+- **`temp_c`**: Optional ambient/shunt thermistor reading in °C.
+- **`device_id`**: Associated docked device. Resolved via explicit static map or `DeviceRegistry.list_devices()` if omitted.
+- **`crc32`**: 8-character lowercase hexadecimal CRC-32 checksum computed over canonical JSON payload excluding `"crc32"`:
+  `canonical_bytes = json.dumps({k: v for k, v in payload.items() if k != "crc32"}, sort_keys=True, separators=(',', ':')).encode('utf-8')`
+
+### 3. Implementation Details
+- **`trust_engine/esp32_transport.py`**:
+  - `ESP32Frame`: Immutable dataclass representing parsed envelope.
+  - `FrameErrorReason`: Categorized error taxonomy (`BUFFER_OVERFLOW`, `DECODE_ERROR`, `MALFORMED_JSON`, `UNSUPPORTED_VERSION`, `MISSING_FIELD`, `INVALID_FIELD_TYPE`, `NON_FINITE_VALUE`, `NEGATIVE_TIMESTAMP`, `CRC_MISMATCH`, `OUT_OF_SEQUENCE`, `UNMAPPED_PORT`, `VALIDATION_FAILED`).
+  - `FrameParseError` & `FrameParseResult`: Structured failure/success containers.
+  - `compute_frame_crc32()` & `format_esp32_frame()`: Deterministic CRC-32 calculator and serializer.
+  - `ESP32FrameParser`: In-memory chunk buffer re-assembler, runaway delimiter-less buffer protector, sequence monotonicity tracker, port-to-device resolver, and `TelemetryValidator` integration.
+  - `SyntheticESP32Source`: Deterministic generator for test/simulation capable of creating compliant frames, arbitrarily chunked streams, CRC-corrupted frames, electrical spikes, and clock drift without physical hardware.
+- **`trust_engine/audit.py`**:
+  - Added `__bool__(self) -> bool: return True` to ensure empty `AuditLog` instances evaluate as truthy in boolean expressions, preventing Python's default `len(self) == 0` falsiness gotcha when checking `if audit_log is None:`.
+
+### 4. Stage 6 Automated Test Suite (`tests/test_esp32_transport.py` — 22 tests)
+1. `test_compute_frame_crc32_canonical_and_deterministic`: Proves key-ordering invariance in CRC digest.
+2. `test_format_esp32_frame`: Verifies valid formatting with CRC-32 and trailing newline.
+3. `test_parse_valid_frame_line`: Asserts extraction of `ESP32Frame` and `PhysicalTelemetry`.
+4. `test_stream_chunking_arbitrary_sizes`: Splits frames into 5-byte chunks and asserts proper reassembly upon newline.
+5. `test_multiple_frames_in_single_chunk`: Feeds 3 consecutive frames in one chunk; asserts all 3 parsed in sequence.
+6. `test_crlf_and_lf_line_endings`: Verifies CRLF (`\r\n`) and LF (`\n`) handling and blank line skipping.
+7. `test_corrupt_crc_rejected`: Asserts corrupted CRC-32 is rejected with `CRC_MISMATCH`.
+8. `test_crc_disabled_mode`: Verifies frames without CRC are accepted when `require_crc=False`.
+9. `test_malformed_json_rejected`: Asserts broken JSON triggers `MALFORMED_JSON`.
+10. `test_unsupported_version_rejected`: Asserts protocol versions != 1 trigger `UNSUPPORTED_VERSION`.
+11. `test_missing_required_fields_rejected`: Asserts missing current/voltage/timestamp triggers `MISSING_FIELD`.
+12. `test_invalid_field_types_rejected`: Asserts booleans passed as floats trigger `INVALID_FIELD_TYPE`.
+13. `test_nan_and_inf_rejected`: Asserts non-finite floats trigger `NON_FINITE_VALUE`.
+14. `test_negative_timestamp_rejected`: Asserts `ts < 0` triggers `NEGATIVE_TIMESTAMP`.
+15. `test_sequence_tracking_and_regression_detection`: Asserts sequence regression triggers `OUT_OF_SEQUENCE`.
+16. `test_sequence_reset_on_reboot`: Verifies `reset_sequence()` allows new starting sequence counter.
+17. `test_buffer_overflow_runaway_line`: Asserts oversized buffer (> 200 bytes) without newline discards data cleanly and recovers.
+18. `test_device_resolution_via_registry`: Resolves missing `device_id` from `DeviceRegistry` by matching `physical_port`.
+19. `test_device_resolution_via_port_map`: Resolves missing `device_id` from static port map.
+20. `test_unmapped_port_triggers_error`: Asserts unmapped port triggers `UNMAPPED_PORT`.
+21. `test_physical_bounds_violation_surfaced`: Asserts overvoltage (35V) triggers `VALIDATION_FAILED`.
+22. `test_audit_logging_on_frame_errors`: Asserts corrupt frames emit `AuditEvent` with `TELEMETRY_INVALID` and transport reason code.
+
+---
+
+### 5. Repository Test Summary
+- **Stage 1 (State & Registry):** 18 tests
+- **Stage 2 (Telemetry Schemas & Validation):** 17 tests
+- **Stage 3 (Policy & Engine):** 21 tests
+- **Stage 4 (Audit, Simulation & Enforcement):** 14 tests
+- **Stage 5 (Security Review & Invariants):** 5 tests
+- **Stage 6 (ESP32 Transport & CRC Parser):** 22 tests
+- **Total Tests:** **97 / 97 passing in 0.05s**.
+
+
 
 
 

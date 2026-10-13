@@ -49,6 +49,39 @@ def main() -> int:
     print("All scenarios completed successfully with full deterministic audit trails.")
     print("Total Audit Events in Log:", len(simulator.audit_log))
     print("=" * 70)
+    print()
+
+    # Stage 6 Demonstration: ESP32 UART Stream & Ingestion Pipeline
+    print("=" * 70)
+    print("      ESP32 UART TELEMETRY INGESTION & CRC-32 DEMONSTRATION")
+    print("=" * 70)
+    from trust_engine.esp32_transport import ESP32FrameParser, SyntheticESP32Source
+
+    esp32_source = SyntheticESP32Source()
+    esp32_parser = ESP32FrameParser()
+
+    print("[1] Generating Compliant ESP32 Frame (Chunked 7 bytes/read):")
+    valid_line = esp32_source.make_frame(port=1, voltage_v=5.08, current_a=0.42, temp_c=36.2, device_id="dock-dev-01")
+    chunks = esp32_source.make_chunked_stream(valid_line, chunk_size=7)
+    parsed_results = []
+    for c in chunks:
+        parsed_results.extend(esp32_parser.feed(c))
+    
+    if parsed_results and parsed_results[0].is_success:
+        telem = parsed_results[0].telemetry
+        print(f"  ✓ Reassembled & Verified: Port {telem.physical_port} | {telem.voltage_v:.2f}V | {telem.current_a:.2f}A | {telem.temperature_c}°C")
+        print(f"  ✓ CRC-32 Checksum Validated: {parsed_results[0].frame.crc32}")
+
+    print("\n[2] Simulating UART Transmission Noise (Corrupted CRC-32):")
+    corrupt_line = esp32_source.make_frame(port=1, voltage_v=5.08, current_a=0.42, corrupt_crc=True, device_id="dock-dev-01")
+    corrupt_results = esp32_parser.feed(corrupt_line.encode("utf-8"))
+    if corrupt_results and not corrupt_results[0].is_success:
+        err = corrupt_results[0].error
+        print(f"  ✓ Corrupt Frame Detected: {err.reason.value}")
+        print(f"  ✓ Error Details: {err.message}")
+
+    print(f"\nParser Telemetry Statistics: {esp32_parser.stats}")
+    print("=" * 70)
     return 0
 
 

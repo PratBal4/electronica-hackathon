@@ -47,7 +47,8 @@ backplane/
 │   ├── engine.py                  # Central TrustEngine orchestrator & state machine
 │   ├── audit.py                   # Structured zero-secret audit event logging
 │   ├── enforcement.py             # Narrow enforcement interface & safe simulation adapter
-│   └── simulator.py               # Deterministic scenario simulator runner
+│   ├── simulator.py               # Deterministic scenario simulator runner
+│   └── esp32_transport.py         # ESP32 UART transport, CRC-32 & stream parser
 ├── tests/
 │   ├── test_states.py             # Unit tests for state model & conversions
 │   ├── test_device.py             # Unit tests for Device dataclass & validation
@@ -58,7 +59,8 @@ backplane/
 │   ├── test_audit.py              # Unit tests for audit logging & secret scrubbing
 │   ├── test_enforcement.py        # Safety tests proving no system/GPIO calls occur
 │   ├── test_simulator.py          # Scenario verification for admission & isolation
-│   └── test_security_review.py    # Invariant & boundary regression tests
+│   ├── test_security_review.py    # Invariant & boundary regression tests
+│   └── test_esp32_transport.py    # ESP32 transport, CRC-32 & chunking tests
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -92,7 +94,7 @@ pip install pytest
 ## 4. Running Tests & Demonstration CLI
 
 ### Run Test Suite
-To run all 75 automated tests:
+To run all 97 automated tests:
 
 ```bash
 .venv/bin/pytest -v
@@ -118,6 +120,7 @@ python main.py
 | **Stage 3** | Policy engine & admission rules | **Completed** | 56 passing |
 | **Stage 4** | Audit logging, simulator & simulated enforcement | **Completed** | 70 passing |
 | **Stage 5** | Formal security audit & boundary invariant hardening | **Completed** | 75 passing |
+| **Stage 6** | ESP32 UART Transport, CRC-32 & Ingestion Pipeline | **Completed** | 97 passing |
 
 
 

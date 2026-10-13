@@ -170,3 +170,7 @@ class AuditLog:
     def __len__(self) -> int:
         """Return total count of recorded events."""
         return len(self._events)
+
+    def __bool__(self) -> bool:
+        """AuditLog instance is always truthy, representing an active audit log."""
+        return True
