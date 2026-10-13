@@ -141,12 +141,12 @@ def run_simulation(pace: float = 0.5) -> int:
     pace_pause(1.2)
 
     # --------------------------------------------------------------------------
-    # STEP 2: Physical Telemetry Ingestion (INA3221 Sensor)
+    # STEP 2: Physical Telemetry Ingestion (ACS712 Sensor)
     # --------------------------------------------------------------------------
-    print_step(2, "INA3221 Power Monitor Readings Ingestion", tick())
+    print_step(2, "ACS712 Power Monitor Readings Ingestion", tick())
     now = time.time()
 
-    print(f"  {tick()} ⚡ Polling INA3221 I2C Shunt Monitor (Port 1 - Arduino UNO)...")
+    print(f"  {tick()} ⚡ Polling ACS712 Current Sensor (Port 1 - Arduino UNO)...")
     sys.stdout.flush()
     pace_pause(0.8)
 
@@ -164,7 +164,7 @@ def run_simulation(pace: float = 0.5) -> int:
     sys.stdout.flush()
     pace_pause(0.8)
 
-    print(f"  {tick()} ⚡ Polling INA3221 I2C Shunt Monitor (Port 2 - ESP8266 WiFi)...")
+    print(f"  {tick()} ⚡ Polling ACS712 Current Sensor (Port 2 - ESP8266 WiFi)...")
     sys.stdout.flush()
     pace_pause(0.8)
 
@@ -360,7 +360,7 @@ def run_simulation(pace: float = 0.5) -> int:
     )
 
     print(f"\n{BOLD}PHYSICAL POWER DRAW DURING ATTACK:{RESET}")
-    print(f"  • INA3221 Measured Power: {p_esp8266_flow5.voltage_v:.2f}V, {p_esp8266_flow5.current_a*1000:.1f} mA (0.47W)")
+    print(f"  • ACS712 Measured Power: {p_esp8266_flow5.voltage_v:.2f}V, {p_esp8266_flow5.current_a*1000:.1f} mA (0.47W)")
     print(f"  • {YELLOW}CRITICAL OBSERVATION:{RESET} The ESP8266 is transmitting to an untrusted server, but its")
     print(f"    power draw stayed at a tiny 95mA! A hardware power monitor ALONE CANNOT detect this attack.")
     sys.stdout.flush()
