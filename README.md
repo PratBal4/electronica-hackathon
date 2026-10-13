@@ -49,6 +49,9 @@ backplane/
 │   ├── enforcement.py             # Narrow enforcement interface & safe simulation adapter
 │   ├── simulator.py               # Deterministic scenario simulator runner
 │   └── esp32_transport.py         # ESP32 UART transport, CRC-32 & stream parser
+├── simulate_dock.py               # Dual-device bench simulation (Arduino & ESP8266)
+├── run_live.py                    # Real hardware serial runner for /dev/ttyACM0
+├── install.py                     # Cross-platform automated build and installer
 ├── tests/
 │   ├── test_states.py             # Unit tests for state model & conversions
 │   ├── test_device.py             # Unit tests for Device dataclass & validation
@@ -61,7 +64,8 @@ backplane/
 │   ├── test_simulator.py          # Scenario verification for admission & isolation
 │   ├── test_security_review.py    # Invariant & boundary regression tests
 │   ├── test_esp32_transport.py    # ESP32 transport, CRC-32 & chunking tests
-│   └── test_adversarial_suite.py  # Hostile attack simulation & negative test suite
+│   ├── test_adversarial_suite.py  # Hostile attack simulation & negative test suite
+│   └── test_multi_device_simulation.py # Dual-device dock & TLS cert failure tests
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -103,13 +107,20 @@ pip install -r requirements-dev.txt
 ## 4. Running Tests & Demonstration CLI
 
 ### Run Test Suite
-To run all 110 automated tests (including adversarial and negative test suites):
+To run all 116 automated tests (including adversarial, negative, and multi-device simulation suites):
 
 ```bash
 .venv/bin/pytest -v
 ```
 
 Execution logs are streamed into `logs/pytest.log` with timestamps and audit records.
+
+### Run Multi-Device Bench Simulation (Arduino UNO & ESP8266)
+To run the dual-device bench dock simulation with application-layer protocol inspection and invalid TLS certificate detection:
+
+```bash
+python3 simulate_dock.py
+```
 
 ### Run Demonstration Simulator CLI
 To run the interactive demonstration scenarios:
@@ -131,6 +142,7 @@ python main.py
 | **Stage 5** | Formal security audit & boundary invariant hardening | **Completed** | 75 passing |
 | **Stage 6** | ESP32 UART Transport, CRC-32 & Ingestion Pipeline | **Completed** | 97 passing |
 | **Stage 7** | Adversarial Exploit Resistance & Negative Suite | **Completed** | 110 tests (109 passing, 1 xfailed) |
+| **Stage 8** | Multi-Device Dock Simulation (Arduino UNO & ESP8266) | **Completed** | 116 tests (115 passing, 1 xfailed) |
 
 
 

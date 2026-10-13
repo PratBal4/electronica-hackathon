@@ -266,6 +266,16 @@ class PolicyEngine:
                     evidence_summary=evidence,
                 )
 
+            if n.tls_cert_valid is False:
+                evidence["cert_error"] = n.tls_cert_error or "Untrusted / invalid certificate"
+                return PolicyDecision(
+                    decision_type=DecisionType.REJECT,
+                    recommended_state=DeviceState.REJECTED,
+                    reason_codes=["INVALID_TLS_CERTIFICATE"],
+                    explanation=f"Admission rejected: traffic contains invalid TLS certificate ({n.tls_cert_error or 'Validation failed'}).",
+                    evidence_summary=evidence,
+                )
+
         # Rule 6: Admission Approved
         evidence["admission_criteria_passed"] = True
         return PolicyDecision(
@@ -336,6 +346,20 @@ class PolicyEngine:
                     explanation=(
                         f"Severe violation: packet count of {n.packet_count} exceeds "
                         f"threshold of {self.config.severe_packet_threshold}."
+                    ),
+                    evidence_summary=evidence,
+                )
+
+            if n.tls_cert_valid is False:
+                evidence["tls_cert_error"] = n.tls_cert_error or "Untrusted / invalid certificate"
+                evidence["untrusted_endpoint"] = n.destination
+                return PolicyDecision(
+                    decision_type=DecisionType.ISOLATE,
+                    recommended_state=DeviceState.ISOLATED,
+                    reason_codes=["SEVERE_VIOLATION_INVALID_CERTIFICATE"],
+                    explanation=(
+                        f"Severe security violation: device attempted TLS connection to {n.destination} "
+                        f"with an invalid or untrusted certificate ({n.tls_cert_error or 'Validation failed'})."
                     ),
                     evidence_summary=evidence,
                 )

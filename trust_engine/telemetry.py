@@ -127,6 +127,9 @@ class NetworkTelemetry:
     source_port: Optional[int] = None
     destination_port: Optional[int] = None
     window_duration_s: Optional[float] = None
+    app_protocol: Optional[str] = None
+    tls_cert_valid: Optional[bool] = None
+    tls_cert_error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert record to dictionary representation."""
@@ -143,6 +146,9 @@ class NetworkTelemetry:
             "source_port": self.source_port,
             "destination_port": self.destination_port,
             "window_duration_s": self.window_duration_s,
+            "app_protocol": self.app_protocol,
+            "tls_cert_valid": self.tls_cert_valid,
+            "tls_cert_error": self.tls_cert_error,
         }
 
 

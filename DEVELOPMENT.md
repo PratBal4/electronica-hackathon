@@ -543,7 +543,60 @@ During Stage 7 test construction, a second instance of Python's `__len__` truthi
 
 ---
 
-### 4. Repository Test Summary
+## Stage 8: Multi-Device Bench Dock Simulation (Arduino UNO & ESP8266 WiFi)
+
+### 1. Overview & Objective
+Demonstrates a multi-device bench dock managed by the Raspberry Pi Trust Engine controller, featuring two docked physical devices:
+1. **Arduino UNO (Port 1)**: Atmega328P offline microcontroller, low idle power (~5.02V, ~48mA, 0.24W), generating zero network traffic.
+2. **ESP8266 WiFi (Port 2)**: Tensilica L106 802.11 b/g/n microcontroller, benign power draw (~5.01V, ~92–95mA, 0.46–0.47W), actively communicating on the local network (`192.168.1.105`).
+
+### 2. Network Topology & Gateway Layout
+Managed authoritatively by the Raspberry Pi (`192.168.1.1`):
+```text
+  [Raspberry Pi Gateway / Trust Engine: 192.168.1.1]
+              |
+              +--- Port 1: [Arduino UNO] (00:1A:79:AB:CD:01) --- [Offline / Idle: 48 mA]
+              |
+              +--- Port 2: [ESP8266 WiFi] (192.168.1.105, 5C:CF:7F:4A:22:90) --- [Active: 92-95 mA]
+                               |
+                               +---> UDP 53   (Pi DNS: 192.168.1.1:53) ------------ [VALID / ALLOWED]
+                               +---> UDP 123  (Pi NTP: 192.168.1.1:123) ----------- [VALID / ALLOWED]
+                               +---> TCP 1883 (MQTT Broker: 192.168.1.10:1883) ---- [VALID / ALLOWED]
+                               +---> TCP 443  (OTA Server: 142.250.190.46:443) ---- [VALID TLS / ALLOWED]
+                               +---> TCP 8443 (Rogue C2: 198.51.100.77:8443) ------ [EXPIRED CERT / ISOLATE!]
+```
+
+### 3. Application Layer Protocol Inspection
+The Raspberry Pi passively inspects all application layer traffic:
+- **DNS (UDP 53)**: Resolves local and external broker hostnames.
+- **NTP (UDP 123)**: Time synchronization with the Pi time server.
+- **MQTT (TCP 1883)**: Standard IoT telemetry publishing to internal broker (`192.168.1.10`).
+- **HTTPS (TCP 443)**: Firmware OTA verification against trusted CA certificate (`142.250.190.46`).
+- **HTTPS/C2 (TCP 8443)**: Covert beacon to rogue server (`198.51.100.77:8443`) presenting an invalid certificate:
+  - Error: `EXPIRED_AND_SELF_SIGNED_UNTRUSTED_ISSUER`.
+
+### 4. The Physical Power Blindness Principle
+During the rogue transmission in Flow 5, the INA3221 sensor measures:
+- Voltage: `5.00 V`
+- Current: `95.0 mA (0.47 W)`
+- Temperature: `34.6 °C`
+
+**Critical Finding**: The power draw remains completely nominal (< 100mA, 0.47W). A hardware power monitoring rail **alone** is fundamentally blind to application-layer protocol exploits and untrusted TLS connections. Only the cross-layer correlation performed by the Smart Backplane Trust Engine detects the invalid certificate.
+
+### 5. Automated Trust Decision & Isolation
+1. **Decision**: `ISOLATE`
+2. **State Transition**: `TRUSTED -> ISOLATED`
+3. **Reason Code**: `SEVERE_VIOLATION_INVALID_CERTIFICATE`
+4. **Enforcement Action**: Simulated network isolation adapter disconnects device from the gateway without physical relay cutoff.
+5. **Audit Trail**: 8 immutable records logged from discovery through isolation.
+
+### 6. Executable Artifacts & Verification
+- Standalone runner: `python3 simulate_dock.py`
+- Test suite: `tests/test_multi_device_simulation.py` (6 tests passing)
+
+---
+
+### 7. Total Repository Test Suite Summary
 - **Stage 1 (State & Registry):** 18 tests
 - **Stage 2 (Telemetry Schemas & Validation):** 17 tests
 - **Stage 3 (Policy & Engine):** 21 tests
@@ -551,7 +604,9 @@ During Stage 7 test construction, a second instance of Python's `__len__` truthi
 - **Stage 5 (Security Review & Invariants):** 5 tests
 - **Stage 6 (ESP32 Transport & CRC Parser):** 22 tests
 - **Stage 7 (Adversarial Exploit Resistance Suite):** 13 tests (12 passed, 1 xfailed)
-- **Total Tests:** **110 tests across 12 test suites (109 passed, 1 xfailed in 0.06s)**.
+- **Stage 8 (Multi-Device Bench Dock Simulation):** 6 tests
+- **Total Tests:** **116 tests across 13 test suites (115 passed, 1 xfailed in 0.06s)**.
+
 
 
 
