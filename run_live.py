@@ -57,6 +57,11 @@ def open_serial_port(port_path: str, baud_rate: int = 115200):
         import serial  # type: ignore
 
         ser = serial.Serial(port=port_path, baudrate=baud_rate, timeout=1.0)
+        try:
+            ser.dtr = True
+            ser.rts = True
+        except Exception:
+            pass
         return ser
     except ImportError:
         pass
@@ -64,6 +69,7 @@ def open_serial_port(port_path: str, baud_rate: int = 115200):
     # 2. Native POSIX fallback on Linux / Raspberry Pi OS
     if platform.system() != "Windows":
         import fcntl
+        import struct
         import termios
 
         # Open non-blocking first to avoid hanging on carrier detect
@@ -98,6 +104,16 @@ def open_serial_port(port_path: str, baud_rate: int = 115200):
 
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
 
+        # Assert DTR / RTS lines for USB CDC devices
+        try:
+            TIOCMBIS = getattr(termios, "TIOCMBIS", 0x5416)
+            TIOCM_DTR = getattr(termios, "TIOCM_DTR", 0x002)
+            TIOCM_RTS = getattr(termios, "TIOCM_RTS", 0x004)
+            dtr_rts = struct.pack("I", TIOCM_DTR | TIOCM_RTS)
+            fcntl.ioctl(fd, TIOCMBIS, dtr_rts)
+        except Exception:
+            pass
+
         # Switch back to blocking mode with timeout
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
@@ -127,10 +143,13 @@ def open_serial_port(port_path: str, baud_rate: int = 115200):
 
 def find_default_serial_port() -> Optional[str]:
     """Auto-detect common Raspberry Pi and USB serial ports."""
+    # Check USB devices first (ttyACM and ttyUSB), then GPIO UART
     candidates = [
-        "/dev/serial0",   # Primary Raspberry Pi UART
-        "/dev/ttyUSB0",   # USB-to-UART adapter / ESP32 USB
-        "/dev/ttyACM0",   # ESP32 CDC USB device
+        "/dev/ttyACM0",   # ESP32 USB CDC device (e.g. FIREPHX, ESP32-S2/S3)
+        "/dev/ttyUSB0",   # USB-to-UART adapter (CP2102, CH340)
+        "/dev/ttyACM1",
+        "/dev/ttyUSB1",
+        "/dev/serial0",   # Primary Raspberry Pi GPIO UART
         "/dev/ttyS0",     # Secondary Pi mini-UART
         "/dev/cu.usbserial-0001",  # macOS USB
     ]
