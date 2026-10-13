@@ -285,5 +285,17 @@ def test_esp8266_valid_tls_cert_remains_trusted(test_dock_setup):
 
 def test_simulate_dock_script_end_to_end():
     """Verify simulate_dock.py executes cleanly end-to-end with zero errors."""
-    exit_code = run_simulation()
+    exit_code = run_simulation(pace=0.0)
     assert exit_code == 0
+
+
+def test_simulate_dock_main_cli_options(monkeypatch):
+    """Verify CLI main entrypoint supports --fast and custom --pace."""
+    from simulate_dock import main
+
+    monkeypatch.setattr("sys.argv", ["simulate_dock.py", "--fast"])
+    assert main() == 0
+
+    monkeypatch.setattr("sys.argv", ["simulate_dock.py", "--pace", "0.0"])
+    assert main() == 0
+

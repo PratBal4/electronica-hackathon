@@ -107,7 +107,7 @@ pip install -r requirements-dev.txt
 ## 4. Running Tests & Demonstration CLI
 
 ### Run Test Suite
-To run all 116 automated tests (including adversarial, negative, and multi-device simulation suites):
+To run all 117 automated tests (including adversarial, negative, and multi-device real-time simulation suites):
 
 ```bash
 .venv/bin/pytest -v
@@ -115,15 +115,22 @@ To run all 116 automated tests (including adversarial, negative, and multi-devic
 
 Execution logs are streamed into `logs/pytest.log` with timestamps and audit records.
 
-### Run Multi-Device Bench Simulation (Arduino UNO & ESP8266)
-To run the dual-device bench dock simulation with application-layer protocol inspection and invalid TLS certificate detection:
+### Run Multi-Device Real-Time Bench Simulation (Arduino UNO & ESP8266)
+Simulates physical docking, live INA3221 telemetry polling, application-layer protocol inspection (DNS, NTP, MQTT, HTTPS), and invalid TLS certificate detection progressing dynamically in real time:
 
 ```bash
+# Real-time paced simulation with live elapsed timers (default 0.4s cadence):
 python3 simulate_dock.py
+
+# Custom cadence for slow-motion demo presentations:
+python3 simulate_dock.py --pace 0.8
+
+# Instant execution (for CI / automated testing):
+python3 simulate_dock.py --fast
 ```
 
 ### Run Demonstration Simulator CLI
-To run the interactive demonstration scenarios:
+To run the interactive scenario runner:
 
 ```bash
 python main.py
@@ -142,7 +149,7 @@ python main.py
 | **Stage 5** | Formal security audit & boundary invariant hardening | **Completed** | 75 passing |
 | **Stage 6** | ESP32 UART Transport, CRC-32 & Ingestion Pipeline | **Completed** | 97 passing |
 | **Stage 7** | Adversarial Exploit Resistance & Negative Suite | **Completed** | 110 tests (109 passing, 1 xfailed) |
-| **Stage 8** | Multi-Device Dock Simulation (Arduino UNO & ESP8266) | **Completed** | 116 tests (115 passing, 1 xfailed) |
+| **Stage 8** | Multi-Device Real-Time Dock Simulation (Arduino & ESP8266) | **Completed** | 117 tests (116 passing, 1 xfailed) |
 
 
 

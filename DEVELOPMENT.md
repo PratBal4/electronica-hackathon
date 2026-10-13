@@ -590,9 +590,21 @@ During the rogue transmission in Flow 5, the INA3221 sensor measures:
 4. **Enforcement Action**: Simulated network isolation adapter disconnects device from the gateway without physical relay cutoff.
 5. **Audit Trail**: 8 immutable records logged from discovery through isolation.
 
-### 6. Executable Artifacts & Verification
-- Standalone runner: `python3 simulate_dock.py`
-- Test suite: `tests/test_multi_device_simulation.py` (6 tests passing)
+### 6. Executable Artifacts & Real-Time Pacing
+- **Real-Time Runner**: `python3 simulate_dock.py`
+  - Real-time elapsed clock tracking: `[T+00.00s]` through `[T+02.19s]`.
+  - Paced cadence (default `0.4s` per event, customizable with `--pace <seconds>`).
+  - Instant mode (`--fast`) for CI/CD and automated test execution.
+  - Live table rendering of application-layer packets as they cross the Pi gateway.
+  - Live alert display when invalid certificate is intercepted on rogue endpoint `198.51.100.77:8443`.
+- **Automated Test Suite**: `tests/test_multi_device_simulation.py` (7 tests passing):
+  - Validates quarantine of offline Arduino UNO.
+  - Validates admission of benign ESP8266.
+  - Validates physical power blindness during attack (95mA current draw).
+  - Validates invalid TLS certificate isolation (`SEVERE_VIOLATION_INVALID_CERTIFICATE`).
+  - Validates valid TLS certificate retention in `TRUSTED`.
+  - Validates end-to-end execution of `simulate_dock.py`.
+  - Validates `--fast` and `--pace` CLI options.
 
 ---
 
@@ -604,8 +616,9 @@ During the rogue transmission in Flow 5, the INA3221 sensor measures:
 - **Stage 5 (Security Review & Invariants):** 5 tests
 - **Stage 6 (ESP32 Transport & CRC Parser):** 22 tests
 - **Stage 7 (Adversarial Exploit Resistance Suite):** 13 tests (12 passed, 1 xfailed)
-- **Stage 8 (Multi-Device Bench Dock Simulation):** 6 tests
-- **Total Tests:** **116 tests across 13 test suites (115 passed, 1 xfailed in 0.06s)**.
+- **Stage 8 (Multi-Device Real-Time Dock Simulation):** 7 tests
+- **Total Tests:** **117 tests across 13 test suites (116 passed, 1 xfailed in 0.07s)**.
+
 
 
 
