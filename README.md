@@ -60,7 +60,8 @@ backplane/
 │   ├── test_enforcement.py        # Safety tests proving no system/GPIO calls occur
 │   ├── test_simulator.py          # Scenario verification for admission & isolation
 │   ├── test_security_review.py    # Invariant & boundary regression tests
-│   └── test_esp32_transport.py    # ESP32 transport, CRC-32 & chunking tests
+│   ├── test_esp32_transport.py    # ESP32 transport, CRC-32 & chunking tests
+│   └── test_adversarial_suite.py  # Hostile attack simulation & negative test suite
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -94,7 +95,7 @@ pip install pytest
 ## 4. Running Tests & Demonstration CLI
 
 ### Run Test Suite
-To run all 97 automated tests:
+To run all 110 automated tests (including adversarial and negative test suites):
 
 ```bash
 .venv/bin/pytest -v
@@ -121,6 +122,7 @@ python main.py
 | **Stage 4** | Audit logging, simulator & simulated enforcement | **Completed** | 70 passing |
 | **Stage 5** | Formal security audit & boundary invariant hardening | **Completed** | 75 passing |
 | **Stage 6** | ESP32 UART Transport, CRC-32 & Ingestion Pipeline | **Completed** | 97 passing |
+| **Stage 7** | Adversarial Exploit Resistance & Negative Suite | **Completed** | 110 tests (109 passing, 1 xfailed) |
 
 
 

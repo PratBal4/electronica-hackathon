@@ -58,9 +58,9 @@ class TrustEngine:
         telemetry_validator: Optional[TelemetryValidator] = None,
     ) -> None:
         """Initialize TrustEngine with registry, policy engine, and validator."""
-        self.registry = registry or DeviceRegistry()
-        self.policy_engine = policy_engine or PolicyEngine()
-        self.telemetry_validator = telemetry_validator or TelemetryValidator()
+        self.registry = registry if registry is not None else DeviceRegistry()
+        self.policy_engine = policy_engine if policy_engine is not None else PolicyEngine()
+        self.telemetry_validator = telemetry_validator if telemetry_validator is not None else TelemetryValidator()
 
         self._admission_start_times: Dict[str, float] = {}
         self._anomaly_counts: Dict[str, int] = {}

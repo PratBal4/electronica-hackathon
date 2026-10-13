@@ -500,6 +500,60 @@ Line-delimited JSON frames terminated by `\n` or `\r\n`:
 - **Stage 6 (ESP32 Transport & CRC Parser):** 22 tests
 - **Total Tests:** **97 / 97 passing in 0.05s**.
 
+---
+
+## Stage 7: Adversarial Exploit Resistance & Malicious Negative Test Suite
+
+### 1. Scope & Adversary Model
+Stage 7 establishes a dedicated adversarial suite (`tests/test_adversarial_suite.py`) containing intentional negative test cases, exploit simulations, and proof assertions designed to test the system under hostile conditions:
+- **Active Adversary Capabilities:** An attacker with control over rogue device firmware, raw socket packet generators, and physical dock access attempting to circumvent zero-trust admission, hijack device bindings, corrupt memory, or poison sensor metrics.
+- **Fail-Safe Goal:** Proves the system fails cleanly, rejects attacks, emits security audit alarms, and does not crack under unexpected edge conditions.
+
+### 2. Architectural Hardening Discovered & Applied
+During Stage 7 test construction, a second instance of Python's `__len__` truthiness gotcha was identified:
+- **`DeviceRegistry` Truthiness Hardening:** In `TrustEngine.__init__`, `self.registry = registry or DeviceRegistry()` evaluated to a *new* registry instance whenever an empty `DeviceRegistry` (`len == 0`) was passed. Added `def __bool__(self) -> bool: return True` to `DeviceRegistry` and changed `TrustEngine.__init__` to `self.registry = registry if registry is not None else DeviceRegistry()`.
+
+### 3. Stage 7 Adversarial Test Cases (`tests/test_adversarial_suite.py` — 13 tests)
+1. **`test_adversarial_self_signed_trusted_escalation` (ATTACK-01):**
+   Rogue firmware claims `status=TRUSTED` during registration. Asserted that `DeviceRegistry.register()` overrides status to `QUARANTINED`.
+2. **`test_adversarial_mac_spoofing_conflict` (ATTACK-02):**
+   Adversary docks on Port 2 with cloned MAC address of legitimate Port 1 device. Asserted that policy evaluation outputs `REJECT` verdict and transitions device to `REJECTED`.
+3. **`test_adversarial_duplicate_id_overwrite_attack` (ATTACK-03):**
+   Adversary attempts to re-register `critical-infra-node` with attacker parameters. Asserted that `DuplicateDeviceError` is raised and existing record is protected.
+4. **`test_adversarial_memory_tampering_defensive_copy` (ATTACK-04):**
+   Attacker mutates `status` on returned `Device` object. Asserted that internal registry state remains `QUARANTINED` via defensive copying.
+5. **`test_adversarial_command_injection_payloads` (ATTACK-05):**
+   Injects shell syntax (`"; rm -rf / ; $(reboot)"`) and path traversal in identifiers. Proves inert handling and audit log redaction.
+6. **`test_adversarial_nan_poisoning_bypass` (ATTACK-06):**
+   Adversary injects IEEE 754 `NaN` voltage aiming to bypass comparison operators. Asserted that `TelemetryValidator` detects non-finite float and raises `TelemetryValidationError`.
+7. **`test_adversarial_infinite_current_spike` (ATTACK-07):**
+   Adversary injects `+inf` shunt current. Asserted that `TelemetryValidator` rejects non-finite float.
+8. **`test_adversarial_time_travel_stale_replay` (ATTACK-08):**
+   Replay attack with 1-hour stale timestamp. Asserted that freshness check fails.
+9. **`test_adversarial_future_clock_skew_injection` (ATTACK-09):**
+   Adversary sends timestamp from year 2099 (+100,000s). Asserted that future clock skew check fails.
+10. **`test_adversarial_volumetric_overflow` (ATTACK-10):**
+    Adversary sends 5 billion packets attempting integer overflow. Asserted that packet count bounds fail.
+11. **`test_adversarial_lifecycle_leap_monitoring_unadmitted_device` (ATTACK-11):**
+    Adversary attempts to call `evaluate_monitoring` directly on an unadmitted `QUARANTINED` device. Asserted that `ValueError` is raised.
+12. **`test_adversarial_illegal_state_transition_attempt` (ATTACK-12):**
+    Adversary attempts direct jump `ISOLATED -> TRUSTED`. Asserted that `IllegalStateTransitionError` is raised.
+13. **`test_xfail_demonstrating_nan_is_strictly_not_accepted` (XFAIL-PROOF):**
+    Intentional `@pytest.mark.xfail(strict=True)` proof test demonstrating that asserting `is_valid == True` on NaN telemetry fails. Proves the test suite strictly catches invalid states.
+
+---
+
+### 4. Repository Test Summary
+- **Stage 1 (State & Registry):** 18 tests
+- **Stage 2 (Telemetry Schemas & Validation):** 17 tests
+- **Stage 3 (Policy & Engine):** 21 tests
+- **Stage 4 (Audit, Simulation & Enforcement):** 14 tests
+- **Stage 5 (Security Review & Invariants):** 5 tests
+- **Stage 6 (ESP32 Transport & CRC Parser):** 22 tests
+- **Stage 7 (Adversarial Exploit Resistance Suite):** 13 tests (12 passed, 1 xfailed)
+- **Total Tests:** **110 tests across 12 test suites (109 passed, 1 xfailed in 0.06s)**.
+
+
 
 
 

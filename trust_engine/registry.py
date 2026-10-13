@@ -239,6 +239,10 @@ class DeviceRegistry:
         """Return the number of registered devices."""
         return len(self._devices)
 
+    def __bool__(self) -> bool:
+        """DeviceRegistry instance is always truthy, representing an active registry."""
+        return True
+
     def __iter__(self) -> Iterator[str]:
         """Iterate over registered device IDs."""
         return iter(self._devices.keys())
