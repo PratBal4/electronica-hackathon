@@ -1,0 +1,5 @@
+# Smart Backplane Trust Engine --- Runtime Requirements
+# -------------------------------------------------------------
+# ZERO THIRD-PARTY DEPENDENCIES:
+# The Trust Engine application runtime is 100% Python Standard Library.
+# No external runtime wheels or packages required on the Raspberry Pi 3B+.

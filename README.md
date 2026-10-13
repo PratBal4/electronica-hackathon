@@ -74,20 +74,28 @@ backplane/
 - Python 3.9+ (tested on Python 3.11+ / 3.15)
 - Standard library only for application runtime (zero external runtime dependencies)
 
-### Local Environment Setup
+### Automated One-Step Setup (Recommended)
+The repository includes a cross-platform Python build and installer script that configures `.venv`, installs dependencies with error handling and fallbacks, and executes a smoke test:
 
 ```bash
 # Clone or navigate to the repository directory
 cd /path/to/backplane
 
+# Run automated cross-platform build and installer
+python3 install.py   # or: python3 build.py
+```
+
+### Manual Environment Setup
+
+```bash
 # Create virtual environment
 python3 -m venv .venv
 
 # Activate virtual environment
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install development dependencies (pytest)
-pip install pytest
+# Install development & test dependencies
+pip install -r requirements-dev.txt
 ```
 
 ---
