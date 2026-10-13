@@ -10,8 +10,9 @@ This document tracks the staged implementation, architectural decisions, and ver
 |---|---|---|---|---|
 | **Stage 1** | State model, Device dataclass, In-memory Registry | **COMPLETED** | 18 / 18 | 2026-10-13 |
 | **Stage 2** | Telemetry schemas & physical/network validation | **COMPLETED** | 35 / 35 | 2026-10-13 |
-| **Stage 3** | Deterministic policy evaluation & engine | *Queued* | - | - |
+| **Stage 3** | Deterministic policy evaluation & engine | **COMPLETED** | 56 / 56 | 2026-10-13 |
 | **Stage 4** | Audit logging & simulated enforcement adapter | *Queued* | - | - |
+
 
 
 ---
@@ -258,6 +259,68 @@ Every test run writes structured execution and debug logs into `logs/pytest.log`
 
 ---
 
+## Stage 3: Deterministic Policy Evaluation and Trust Engine Orchestration
+
+### 1. Architectural Objectives
+- **Explicit & Explainable Rules:** Zero machine learning and zero opaque confidence scores. Decisions output structured verdicts with explicit programmatic `reason_codes`, human-readable `explanation`, and an `evidence_summary`.
+- **Centralized & Authoritative State Transitions:** Transition rules are strictly centralized (`ALLOWED_TRANSITIONS`). Transitions skipping intermediate states or moving from terminal states raise `IllegalStateTransitionError`.
+- **Reason Required:** Every single state transition and policy verdict requires an explicit, documented reason.
+- **Decoupled Identity vs Behaviour:** Identity validation (dock port / MAC binding conflicts) is distinct from behavioral monitoring (current consumption, packet rates, destinations).
+- **Mild Anomalies vs Severe Violations:** A single mild anomaly flags the device as `ANOMALOUS` for continuous monitoring without immediate rejection. Only severe policy breaches (prohibited C2 endpoints, massive exfiltration bursts) or repeated anomalies exceeding threshold (`> max_mild_anomalies`) trigger `ISOLATE`.
+- **Admission Timeout without Malice:** Timeout ends the admission quarantine attempt with reason `ADMISSION_TIMEOUT` while explicitly acknowledging that timeout alone is not proof of malice.
+
+### 2. Physical Reality vs. Automated Unit Testing
+A key question during embedded software development is: *Why do software tests pass without real hardware connected, and where would real hardware fail?*
+- **Why tests pass now:** Unit tests construct deterministic in-memory synthetic records (`PhysicalTelemetry`, `NetworkTelemetry`). This tests the *software decision logic* in pure isolation from hardware volatility.
+- **Where real hardware will encounter failures:**
+  1. *Loose sensor wiring / I2C bus noise:* Disconnected INA3221 lines cause I2C timeouts or return floating ADC bits resulting in `NaN` or infinite values. Stage 2's finite number checks (`math.isnan`) protect the engine from crashing on these.
+  2. *Inrush current spikes:* Devices plugging into physical dock ports draw an initial surge of current (e.g., 3.5A charging capacitors) before settling down. Stage 3's admission policy requires continuous validated readings over an observation window.
+  3. *Unsynchronized RTC clock drift:* ESP32 boards booting without NTP can transmit timestamps from epoch 1970 or skewed by hours. Stage 2's freshness validator catches this (`max_age_seconds: 60s`, `max_future_skew: 5s`).
+  4. *Physical port contention:* If a user plugs a passive USB hub into a dock port, two physical devices share one dock port. Stage 1 & Stage 3's `check_conflicts()` and `IDENTITY_CONFLICT` rules explicitly catch this condition.
+
+### 3. Implemented Modules
+- `trust_engine/policy.py`:
+  - `DecisionType`: `ALLOW`, `KEEP_QUARANTINED`, `ANOMALOUS`, `ISOLATE`, `REJECT`.
+  - `PolicyDecision`: Structured output with `decision_type`, `recommended_state`, `reason_codes`, `explanation`, and `evidence_summary`.
+  - `PolicyConfig`: Configurable parameters (timeout, baseline voltage/current ranges, max anomalies, prohibited destinations/ports/protocols).
+  - `PolicyEngine`: Pure deterministic rule evaluation for admission and active monitoring.
+- `trust_engine/engine.py`:
+  - `ALLOWED_TRANSITIONS`: Centralized state transition graph.
+  - `IllegalStateTransitionError`: Exception preventing illegal or out-of-order state jumps.
+  - `TrustEngine`: Orchestrates device registration, telemetry filtering, policy evaluation, state transitions, and audit history.
+
+---
+
+### 4. Detailed Audit of Conducted Tests (21 New Tests, 56 Total)
+
+#### A. Policy Rule Tests (`tests/test_policy.py` — 10 tests)
+1. **`test_insufficient_evidence_keeps_quarantined`**: Asserts missing telemetry (no data, only physical, or only network) returns `KEEP_QUARANTINED` with `INSUFFICIENT_EVIDENCE`.
+2. **`test_successful_admission_under_defined_rules`**: Asserts compliant telemetry yields `ALLOW`, recommending `TRUSTED` with `ADMISSION_PASSED`.
+3. **`test_identity_conflict_prevents_admission`**: Asserts MAC or port conflict immediately returns `REJECT` with `IDENTITY_CONFLICT`.
+4. **`test_admission_timeout_ends_attempt_without_malice`**: Asserts elapsed time exceeding 30s returns `REJECT` with `ADMISSION_TIMEOUT` and notes timeout is not proof of malice.
+5. **`test_physical_baseline_violation_rejects_admission`**: Asserts out-of-spec voltage (4.2V vs 4.75V min) returns `REJECT` with `PHYSICAL_BASELINE_OUT_OF_SPEC`.
+6. **`test_prohibited_network_rules_reject_admission`**: Asserts prohibited destination (`botnet.c2`), protocol (`TELNET`), or port (`1337`) returns `REJECT`.
+7. **`test_mild_anomaly_does_not_automatically_reject`**: Asserts elevated current (2.8A vs 2.5A) returns `ANOMALOUS` for observation, not immediate isolation.
+8. **`test_repeated_anomalies_exceeding_threshold_triggers_isolation`**: Asserts 3rd consecutive anomaly (exceeding threshold of 2) triggers `ISOLATE` with `REPEATED_ANOMALIES_EXCEEDED`.
+9. **`test_severe_network_violations_trigger_immediate_isolation`**: Asserts exfiltration burst (15MB) or C2 communication triggers `ISOLATE` with `SEVERE_VIOLATION`.
+10. **`test_normal_monitoring_maintains_trusted`**: Asserts healthy telemetry during monitoring returns `ALLOW` with `BEHAVIOR_NORMAL`.
+
+#### B. Trust Engine Orchestration Tests (`tests/test_engine.py` — 11 tests)
+11. **`test_allowed_transitions_table_integrity`**: Validates the transition graph table matches the architectural specification.
+12. **`test_illegal_state_transitions_are_rejected`**: Asserts illegal transitions (`QUARANTINED -> ISOLATED`, `QUARANTINED -> ANOMALOUS`) raise `IllegalStateTransitionError`, and blank reasons raise `ValueError`.
+13. **`test_only_trust_engine_can_mark_device_trusted`**: Asserts rogue device registering with `status=TRUSTED` remains `QUARANTINED`; only engine admission can transition to `TRUSTED`.
+14. **`test_engine_admission_insufficient_evidence_stays_quarantined`**: Asserts lack of evidence keeps the device in `QUARANTINED` in the registry.
+15. **`test_engine_admission_success_transitions_to_trusted`**: Asserts compliant telemetry authoritatively transitions the device to `TRUSTED`.
+16. **`test_engine_admission_identity_conflict_transitions_to_rejected`**: Asserts port collision transitions device to `REJECTED`.
+17. **`test_engine_admission_timeout_transitions_to_rejected`**: Asserts timeout transitions device to `REJECTED`.
+18. **`test_engine_monitoring_mild_anomaly_transitions_to_anomalous`**: Asserts mild current surge transitions device from `TRUSTED` to `ANOMALOUS`.
+19. **`test_engine_monitoring_repeated_anomalies_transitions_to_isolated`**: Asserts repeated anomalies trigger transition from `ANOMALOUS` to `ISOLATED`.
+20. **`test_engine_monitoring_severe_violation_transitions_to_isolated`**: Asserts severe violation triggers immediate transition from `TRUSTED` to `ISOLATED`.
+21. **`test_engine_transition_history_audit`**: Verifies transition history records timestamps, from-state, to-state, and explicit reason strings for every lifecycle event.
+
+---
+
 ### 5. Next Stage
-- **Stage 3 (Prompt 3):** Deterministic Policy Evaluation and Trust Engine Orchestration (`trust_engine/policy.py`, `trust_engine/engine.py`, and `tests/test_policy.py`, `tests/test_engine.py`).
+- **Stage 4 (Prompt 4):** Audit logging, deterministic simulator, and simulated enforcement adapter (`trust_engine/audit.py`, `trust_engine/enforcement.py`, `trust_engine/simulator.py`, `main.py`).
+
 

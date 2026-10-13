@@ -41,12 +41,16 @@ backplane/
 │   ├── states.py                  # Authoritative DeviceState enum & conversions
 │   ├── device.py                  # Device dataclass with per-instance attributes
 │   ├── registry.py                # Authoritative in-memory registry
-│   └── telemetry.py               # Physical & network telemetry models and validation
+│   ├── telemetry.py               # Physical & network telemetry models and validation
+│   ├── policy.py                  # Deterministic admission and monitoring policy rules
+│   └── engine.py                  # Central TrustEngine orchestrator & state machine
 ├── tests/
 │   ├── test_states.py             # Unit tests for state model & conversions
 │   ├── test_device.py             # Unit tests for Device dataclass & validation
 │   ├── test_registry.py           # Unit tests for registry, collisions & status ownership
-│   └── test_telemetry.py          # Unit tests for telemetry schema, bounds & freshness
+│   ├── test_telemetry.py          # Unit tests for telemetry schema, bounds & freshness
+│   ├── test_policy.py             # Unit tests for policy rules, decisions & reason codes
+│   └── test_engine.py             # Integration tests for transitions & TrustEngine
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -95,8 +99,9 @@ Every test run automatically streams audit logs to `logs/pytest.log` with timest
 |---|---|---|---|
 | **Stage 1** | State model, Device dataclass, In-memory Registry | **Completed** | 18 passing |
 | **Stage 2** | Telemetry schemas and validation | **Completed** | 35 passing |
-| **Stage 3** | Policy engine & admission rules | Pending | - |
+| **Stage 3** | Policy engine & admission rules | **Completed** | 56 passing |
 | **Stage 4** | Audit logging & simulated enforcement | Pending | - |
+
 
 ---
 
@@ -159,5 +164,39 @@ invalid_result = validate_physical_telemetry(invalid_phys)
 assert invalid_result.is_valid is False
 print(invalid_result.errors)
 # ['voltage_v 28.0 V out of bounds [0.0, 24.0] V']
+```
+
+### Policy Evaluation & Trust Engine Orchestration (Stage 3)
+
+```python
+import time
+from trust_engine import (
+    Device,
+    TrustEngine,
+    PhysicalTelemetry,
+    NetworkTelemetry,
+)
+
+engine = TrustEngine()
+
+# 1. Register newly detected device into quarantine
+device = Device(device_id="dock-cam-01", mac_address="00:11:22:33:44:55", physical_port=1)
+engine.register_device(device)
+print(engine.registry.get("dock-cam-01").status)  # DeviceState.QUARANTINED
+
+# 2. Evaluate admission with compliant telemetry
+now = time.time()
+phys = [PhysicalTelemetry("dock-cam-01", 1, 5.05, 0.45, now)]
+net = [NetworkTelemetry("00:11:22:33:44:55", "10.0.0.5", "10.0.0.1", "TCP", 30, 2500, now)]
+
+decision = engine.evaluate_admission("dock-cam-01", phys, net)
+print(decision.decision_type)  # DecisionType.ALLOW
+print(engine.registry.get("dock-cam-01").status)  # DeviceState.TRUSTED
+
+# 3. Behavioral monitoring flags severe violations and isolates immediately
+bad_net = [NetworkTelemetry("00:11:22:33:44:55", "10.0.0.5", "botnet.c2", "TCP", 10, 500, now)]
+mon_decision = engine.evaluate_monitoring("dock-cam-01", network_telemetry=bad_net)
+print(mon_decision.decision_type)  # DecisionType.ISOLATE
+print(engine.registry.get("dock-cam-01").status)  # DeviceState.ISOLATED
 ```
 
