@@ -34,6 +34,7 @@ Docked device ── network traffic ──> Raspberry Pi
 backplane/
 ├── README.md                      # Project documentation and guide
 ├── DEVELOPMENT.md                 # Stage-by-stage development log and test audit
+├── main.py                        # Executable CLI demonstration entrypoint
 ├── pyproject.toml                 # Project metadata and pytest configuration
 ├── smart_backplane_antigravity_walkthrough.md # Architecture and staged specification
 ├── trust_engine/
@@ -43,14 +44,20 @@ backplane/
 │   ├── registry.py                # Authoritative in-memory registry
 │   ├── telemetry.py               # Physical & network telemetry models and validation
 │   ├── policy.py                  # Deterministic admission and monitoring policy rules
-│   └── engine.py                  # Central TrustEngine orchestrator & state machine
+│   ├── engine.py                  # Central TrustEngine orchestrator & state machine
+│   ├── audit.py                   # Structured zero-secret audit event logging
+│   ├── enforcement.py             # Narrow enforcement interface & safe simulation adapter
+│   └── simulator.py               # Deterministic scenario simulator runner
 ├── tests/
 │   ├── test_states.py             # Unit tests for state model & conversions
 │   ├── test_device.py             # Unit tests for Device dataclass & validation
 │   ├── test_registry.py           # Unit tests for registry, collisions & status ownership
 │   ├── test_telemetry.py          # Unit tests for telemetry schema, bounds & freshness
 │   ├── test_policy.py             # Unit tests for policy rules, decisions & reason codes
-│   └── test_engine.py             # Integration tests for transitions & TrustEngine
+│   ├── test_engine.py             # Integration tests for transitions & TrustEngine
+│   ├── test_audit.py              # Unit tests for audit logging & secret scrubbing
+│   ├── test_enforcement.py        # Safety tests proving no system/GPIO calls occur
+│   └── test_simulator.py          # Scenario verification for admission & isolation
 └── logs/
     └── pytest.log                 # Test execution and Trust Engine audit logs
 ```
@@ -81,15 +88,23 @@ pip install pytest
 
 ---
 
-## 4. Running Tests & Logging
+## 4. Running Tests & Demonstration CLI
 
-To run the full test suite with verbose output:
+### Run Test Suite
+To run all 70 automated tests:
 
 ```bash
 .venv/bin/pytest -v
 ```
 
-Every test run automatically streams audit logs to `logs/pytest.log` with timestamps, severity levels, and validation failure records.
+Execution logs are streamed into `logs/pytest.log` with timestamps and audit records.
+
+### Run Demonstration Simulator CLI
+To run the interactive demonstration scenarios:
+
+```bash
+python main.py
+```
 
 ---
 
@@ -100,7 +115,8 @@ Every test run automatically streams audit logs to `logs/pytest.log` with timest
 | **Stage 1** | State model, Device dataclass, In-memory Registry | **Completed** | 18 passing |
 | **Stage 2** | Telemetry schemas and validation | **Completed** | 35 passing |
 | **Stage 3** | Policy engine & admission rules | **Completed** | 56 passing |
-| **Stage 4** | Audit logging & simulated enforcement | Pending | - |
+| **Stage 4** | Audit logging, simulator & simulated enforcement | **Completed** | 70 passing |
+
 
 
 ---
@@ -199,4 +215,34 @@ mon_decision = engine.evaluate_monitoring("dock-cam-01", network_telemetry=bad_n
 print(mon_decision.decision_type)  # DecisionType.ISOLATE
 print(engine.registry.get("dock-cam-01").status)  # DeviceState.ISOLATED
 ```
+
+---
+
+## 7. Safety Guarantee: Simulated vs. Real Enforcement
+
+> [!IMPORTANT]
+> **SIMULATED ENFORCEMENT ONLY:**
+> This repository implements a safe, testable software prototype. The `SimulatedEnforcementAdapter` **only records actions in-memory**. It explicitly performs:
+> - **NO** Linux firewall (`iptables` / `nftables`) modifications.
+> - **NO** network interface or routing table reconfigurations (protecting your Raspberry Pi Connect remote session).
+> - **NO** Raspberry Pi GPIO pin toggling or INA3221 hardware power cutting.
+>
+> All enforcement requests return structured `EnforcementResult` records stamped with `is_simulation = True`.
+
+---
+
+## 8. Honest Limitations & Remaining Integration Work
+
+### Honest Scope & Limitations
+- **MAC Addresses Are Not Identity Proof:** Observed MAC addresses can be spoofed; MAC association is treated as correlation evidence, not cryptographic authentication.
+- **Normal Telemetry Does Not Prove Innocence:** Compliant voltage or packet counts do not guarantee a device has not been compromised.
+- **Local Logs Are Not Tamper-Proof:** Local file logs on Raspberry Pi OS can be modified if an adversary gains root access.
+- **Traffic Visibility Boundary:** The Trust Engine cannot inspect encrypted payload contents (TLS/HTTPS); policy operates exclusively on network metadata (endpoints, ports, byte/packet volumes).
+
+### Remaining Work for Real Hardware Integration (Phase 2)
+1. **ESP32 & INA3221 Transport Driver:** Implement a robust serial/UART or authenticated framing driver to consume synthetic/real INA3221 readings safely without blocking.
+2. **Linux Packet Capture Adapter:** Integrate an eBPF, `tshark`, or socket-based passive metadata collector to produce `NetworkTelemetry` records without altering routing.
+3. **Dedicated Lab Firewall Rules:** In an isolated network testbed (with out-of-band serial recovery), implement real `nftables` quarantine chains.
+4. **Hardware Port Switching:** Validate low-voltage MOSFET / relay power switching on separate bench supplies before allowing autonomous Trust Engine software control.
+
 

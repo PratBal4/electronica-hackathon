@@ -11,7 +11,8 @@ This document tracks the staged implementation, architectural decisions, and ver
 | **Stage 1** | State model, Device dataclass, In-memory Registry | **COMPLETED** | 18 / 18 | 2026-10-13 |
 | **Stage 2** | Telemetry schemas & physical/network validation | **COMPLETED** | 35 / 35 | 2026-10-13 |
 | **Stage 3** | Deterministic policy evaluation & engine | **COMPLETED** | 56 / 56 | 2026-10-13 |
-| **Stage 4** | Audit logging & simulated enforcement adapter | *Queued* | - | - |
+| **Stage 4** | Audit logging & simulated enforcement adapter | **COMPLETED** | 70 / 70 | 2026-10-13 |
+
 
 
 
@@ -320,7 +321,69 @@ A key question during embedded software development is: *Why do software tests p
 
 ---
 
-### 5. Next Stage
-- **Stage 4 (Prompt 4):** Audit logging, deterministic simulator, and simulated enforcement adapter (`trust_engine/audit.py`, `trust_engine/enforcement.py`, `trust_engine/simulator.py`, `main.py`).
+## Stage 4: Audit Logging, Simulator, and Simulated Enforcement
+
+### 1. Architectural Objectives
+- **Zero-Secret Audit Trail:** Structured `AuditEvent` records scrub all sensitive credential keys (`api_key`, `password`, `token`, `private_key`) before storing or logging.
+- **Narrow Enforcement Contract:** Abstract `EnforcementAdapter` defines exactly three operations: `isolate_device`, `restore_quarantine`, and `set_port_power`.
+- **Purely Simulated Safety Guarantee:** `SimulatedEnforcementAdapter` performs **zero** shell commands, **zero** Linux firewall (`iptables`/`nftables`) modifications, and **zero** GPIO pin toggling.
+- **Safe Failure Modes:** Invalid arguments (empty IDs/reasons, non-positive ports) and unknown devices fail safely without crashing the service.
+- **End-to-End Deterministic Scenarios:** `Simulator` and `main.py` run 3 distinct scenarios: normal admission, insufficient evidence quarantine, and policy violation isolation.
+
+### 2. Implemented Modules
+- `trust_engine/audit.py`:
+  - `AuditEvent`: Structured dataclass with `event_id`, `event_type`, `timestamp`, `device_id`, `reason_code`, `details`, and `severity`.
+  - `AuditLog`: Append-only in-memory log with query filtering and Python `logging` mirroring.
+  - `sanitize_audit_data`: Recursive secret scrubbing utility.
+- `trust_engine/enforcement.py`:
+  - `EnforcementActionType`: Enum of narrow actions (`ISOLATE_DEVICE`, `RESTORE_QUARANTINE`, `SET_PORT_POWER`).
+  - `EnforcementResult`: Dataclass stamped with `is_simulation: True` and explicit execution status.
+  - `EnforcementAdapter`: Abstract base class.
+  - `SimulatedEnforcementAdapter`: In-memory implementation with input validation, registry lookup safety checks, and simulated failure injection (`simulate_failure=True`).
+- `trust_engine/simulator.py`:
+  - `Simulator`: Demonstrates Normal Admission, Insufficient Evidence, and Policy Violation Isolation.
+  - `ScenarioResult`: Structured report for scenario verification.
+- `main.py`:
+  - Executable CLI entrypoint demonstrating all scenarios with safety disclaimers and formatted audit reports.
+
+---
+
+### 3. Detailed Audit of Conducted Tests (14 New Tests, 70 Total)
+
+#### A. Audit Logging Tests (`tests/test_audit.py` — 3 tests)
+1. **`test_audit_event_recording_and_querying`**: Asserts event recording with unique UUIDs and querying filtered by `device_id` or `event_type`.
+2. **`test_secret_scrubbing_guarantee`**: Asserts passwords, API keys, private keys, and user tokens are redacted as `[REDACTED]` in flat and nested structures.
+3. **`test_audit_event_serialization`**: Asserts `to_dict()` produces correct serializable audit event representations.
+
+#### B. Enforcement Safety Tests (`tests/test_enforcement.py` — 7 tests)
+4. **`test_isolate_device_recorded_successfully`**: Asserts `isolate_device` records simulated action with `is_simulation: True`.
+5. **`test_restore_quarantine_recorded_successfully`**: Asserts `restore_quarantine` records simulated action.
+6. **`test_set_port_power_recorded_successfully`**: Asserts `set_port_power` records power requests without physical switching.
+7. **`test_unknown_device_fails_safely`**: Asserts querying an unknown device ID fails safely with `success: False` rather than raising uncaught exceptions.
+8. **`test_invalid_arguments_fail_safely`**: Asserts blank IDs, blank reasons, and invalid port numbers (0, negative, bool) return safe failure results.
+9. **`test_simulated_adapter_failure_handled_safely`**: Asserts adapter fault injection records `ADAPTER_COMMUNICATION_ERROR` in the audit log.
+10. **`test_safety_guarantee_no_system_or_gpio_calls_occurred`**: Patches `subprocess.run`, `subprocess.Popen`, and `os.system` to prove no system calls occur during enforcement.
+
+#### C. Simulator Scenario Tests (`tests/test_simulator.py` — 4 tests)
+11. **`test_scenario_normal_admission`**: Asserts Scenario 1 transitions `QUARANTINED -> TRUSTED` with verdict `ALLOW`.
+12. **`test_scenario_insufficient_evidence`**: Asserts Scenario 2 retains device in `QUARANTINED` with verdict `KEEP_QUARANTINED`.
+13. **`test_scenario_policy_violation_isolation`**: Asserts Scenario 3 transitions `TRUSTED -> ISOLATED` with verdict `ISOLATE` and recorded simulated enforcement.
+14. **`test_run_all_scenarios`**: Asserts running all scenarios executes all 3 lifecycles deterministically.
+
+---
+
+### 4. Definition of Done Checklist Verification
+
+- [x] **Device registry works; duplicate IDs cannot overwrite records.** (`DuplicateDeviceError` tested and verified).
+- [x] **New devices enter quarantine.** (`DeviceState.QUARANTINED` default enforced).
+- [x] **Telemetry is validated before policy evaluation.** (`TelemetryValidator` rejects out-of-bounds, NaN/Inf, and stale data).
+- [x] **Decisions are deterministic and explainable.** (`PolicyEngine` generates programmatic reason codes and human-readable explanations).
+- [x] **Insufficient evidence remains quarantined.** (`KEEP_QUARANTINED` verdict enforced).
+- [x] **A policy violation can trigger simulated isolation.** (`ISOLATE` verdict triggers `SimulatedEnforcementAdapter.isolate_device`).
+- [x] **Decisions and transitions are audited with reasons.** (`AuditLog` and `TrustEngine.get_transition_history` record explicit reasons).
+- [x] **`python -m pytest -q` passes.** (All 70 tests pass in 0.04s).
+- [x] **README distinguishes simulated from real enforcement.** (Safety guarantee banner added).
+- [x] **Demo does not risk the Pi's network connection or physical hardware.** (Proven via test mock verification).
+
 
 
